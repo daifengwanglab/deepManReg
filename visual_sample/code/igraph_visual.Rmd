@@ -1,0 +1,47 @@
+---
+title: "igraph_network"
+author: "Jiawei Huang"
+output: html_document
+---
+
+```{r}
+library(igraph)
+feature_latent = read.csv('../data/feature_projections_visual.csv',row.names = 1)
+gene_latent = feature_latent[1:1000,]
+efeature_latent = feature_latent[1001:1041,]
+#cov_mat = cor(t(gene_latent),t(efeature_latent))
+cov_mat = as.matrix(1/(1+dist(feature_latent)))[1:1000,1001:1041]
+```
+
+```{r}
+thres = 0.997
+sum(abs(cov_mat)>thres)
+cov_net = matrix(ncol = 2,nrow = sum(abs(cov_mat)>thres))
+colnames(cov_net) = c("E feature","gene")
+k=1
+for (i in 1:dim(cov_mat)[2]){
+  for (j in 1:dim(cov_mat)[1]){
+    if(abs(cov_mat[j,i])>thres){
+      cov_net[k,] = c(colnames(cov_mat)[i],rownames(cov_mat)[j]);k=k+1
+    }
+  }
+} 
+```
+
+
+```{r}
+#pdf(paste0("../figure/network.eps"),width = 12,height = 12)
+pdf(paste0("../figure/network.pdf"),width = 12,height = 12)
+net=graph.edgelist(cov_net,directed=T)
+V(net)$color='yellow'
+V(net)$color[V(net)$name%in%cov_net[,2]]='cyan'
+layouts=grep("^layout_", ls("package:igraph"), value=TRUE)[-1]
+net_layout=layout_with_fr(net)
+plot.igraph(net,layout=net_layout,edge.color='black',vertex.frame.color="grey",
+            vertex.shape='circle',#vertex.label=NA,
+            vertex.label.cex=1,vertex.size=7,vertex.label.degree=pi/2,label.color='black',
+            edge.width=0.25,edge.arrow.size=0.25, edge.arrow.width=0.25)
+legend('topleft',c('Electrophysiological feature','Gene'),fill=c('yellow','cyan'),bty='n')
+dev.off()
+```
+

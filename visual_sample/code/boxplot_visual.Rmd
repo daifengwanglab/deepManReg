@@ -1,0 +1,67 @@
+---
+title: "box"
+author: "Jiawei Huang"
+output: html_document
+---
+
+```{r}
+pred_reg = read.csv("../data/visual/pred_reg.csv",header = F)
+pred_noreg = read.csv("../data/visual/pred_noreg.csv",header = F)
+pred_ma = read.csv("../data/visual/pred_ma.csv",header = F)
+pred_cca = read.csv("../data/visual/pred_cca.csv",header = F)
+pred_matcher = read.csv("../data/visual/pred_matcher.csv",header = F)
+y_vali = read.csv("../data/visual/y_vali.csv",header = F)
+```
+
+```{r}
+acc_table = list()
+acc_table[[1]] = matrix(0,nrow = 100,ncol = 5)
+pred_res = list(pred_noreg,pred_reg,pred_ma,pred_cca,pred_matcher)
+for (j in 2:6){
+  acc_table[[j]] = matrix(0,nrow = 100,ncol = 5)
+  acc_table[[1]][,j-1] = apply(pred_res[[j-1]],1,function(x) mean(x))
+  for (i in 0:4){
+    acc_table[[j]][,i+1] = apply(pred_res[[j-1]],1,function(x) mean(x[y_vali[,1] == i]))    
+  }
+}
+apply(acc_table[[1]],2,mean)
+pdf(paste0("../figure/boxplot.eps"),width = 5.5,height = 20)
+#pdf(paste0("../figure/boxplot.pdf"),width = 5.5,height = 20)
+par(mfrow=c(6,1))
+colnames(acc_table[[1]]) = c('Unregularized','DeepManReg','LMA','CCA',"Matcher")
+boxplot(acc_table[[1]],ylab="Test accuracy for all data", xlab="",outline =F,col ="white",ylim = c(0,1))
+
+for (i in 2:6){
+  colnames(acc_table[[i]]) = c('L1','L2/3','L4','L5',"L6")
+  boxplot(acc_table[[i]],ylab=paste0("Test accuracy for ",colnames(acc_table[[1]])[i-1]," method"), xlab="",outline =F,col ="white",ylim = c(0,1))
+}
+dev.off()
+
+library(ggplot2)
+library(reshape2)
+colnames(acc_table[[2]]) = c('L1','L2/3','L4','L5',"L6")
+acc_melt = melt(acc_table[[2]])
+for (i in 3:6){
+  colnames(acc_table[[i]]) = c('L1','L2/3','L4','L5',"L6")
+  acc_melt = rbind(acc_melt,melt(acc_table[[i]]))
+}
+colnames(acc_melt) = c("Method","Layer","Accuracy")
+acc_melt$Method = factor(rep(c('Unregularized','DeepManReg','Linear Manifold Alignment','Canonical-correlation analysis',"Matcher"),rep(500,5)),
+                              levels=c('Unregularized','DeepManReg','Linear Manifold Alignment','Canonical-correlation analysis',"Matcher"))
+```
+
+```{r}
+pdf(paste0("../figure/boxplot.eps"),width = 10,height = 6)
+e <- ggplot(acc_melt, aes(x = Layer, y = Accuracy)) + 
+  geom_boxplot(aes(fill = Method),position = position_dodge(0.9)) +
+  scale_fill_manual(values = c('#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd')) +
+  theme_bw() +
+  theme(axis.text=element_text(size=13),
+        axis.title = element_text(size=14)) +
+  ylim(0,1)
+e
+dev.off()
+```
+
+
+
