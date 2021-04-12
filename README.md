@@ -4,7 +4,7 @@
 The phenotypes of complex biological systems are fundamentally driven by various multi-scale mechanisms. Increasing multi-modal data enables a deeper understanding of underlying complex mechanisms across scales for the phenotypes such as single cell multi-omics data for cell types. However, integrating and interpreting such large-scale multi-modal data remains challenging, especially given highly heterogeneous, nonlinear relationships across modalities. To address this, we developed an interpretable regularized learning model, deepManReg to predict phenotypes from multi-modal data. First, deepManReg employs deep neural networks to learn cross-modal manifolds and then align multi-modal features onto a common latent space. This space aims to preserve both global consistency and local smoothness across modalities and to reveal higher-order nonlinear cross-modal relationships. Second, deepManReg uses cross-modal manifolds as a feature graph to regularize the classifiers for improving phenotype predictions and also prioritizing the multi-modal features and cross-modal interactions for the phenotypes. We applied deepManReg to (1) the image data of handwritten digits with multi-features and (2) recent single cell multi-modal data (Patch-seq data) including transcriptomics and electrophysiology for neuronal cells in the mouse brain. After comparing with the state-of-the-arts, we show that deepManReg has significantly improved predicting phenotypes in both datasets, and also prioritized genes and electrophysiological features for the phenotypes of neuronal cells 
 
 ## Flow chart
-![alt text](https://github.com/daifengwanglab/deepManReg/figures/drawing.eps)
+![alt text](https://github.com/daifengwanglab/deepManReg/figures/workflow.png)
 
 ## Installation
 
