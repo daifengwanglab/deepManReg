@@ -29,6 +29,20 @@ Others plots can be generated through the following codes files: `igraph_visual.
 
 ## Usage
 
+Import libraries
+
+```python
+import numpy as np
+import scipy.spatial.distance as sd
+from deepManReg.neighborhood import neighbor_graph, laplacian
+from deepManReg.correspondence import Correspondence
+from deepManReg.stiefel import *
+from deepManReg.deepManReg import *
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+```
+
 ### Phase 1: Deep Manifold Alignment
 
 First, define the two neural networks which are the same as in this case:
@@ -46,108 +60,80 @@ class Net(nn.Module):
         h2_sigmoid = self.linear2(h1_sigmoid).sigmoid()
         y_pred = self.linear3(h2_sigmoid)
         return y_pred
+
+# N is batch size; D_in is input dimension;
+# H is hidden dimension; D_out is output dimension.
+N, D_in, H1, H2, D_out = 200, x1_np.shape[1], 200, 50, 10
+
+model = Net(D_in, H1, H2, D_out)
+
+optimizer = torch.optim.SGD(model.parameters(), lr = 0.01)
+
+T = 50 # number of training epoch
+
+corr = np.corrcoef(x1, x2)[0:x1.shape[0],x1.shape[0]:(x1.shape[0]+x2.shape[0])] # define the correspondence matrix that suits your datasets
 ```
 
 Then, the two networks are trained by `train_and_project` function:
 
 ```python
-def train_and_project(x1_np, x2_np):
-    
-    torch.manual_seed(0)
-
-    # N is batch size; D_in is input dimension;
-    # H is hidden dimension; D_out is output dimension.
-    N, D_in, H1, H2, D_out = 200, x1_np.shape[1], 200, 50, 10
-
-    model = Net(D_in, H1, H2, D_out)
-
-    x1 = torch.from_numpy(x1_np.astype(np.float32))
-    x2 = torch.from_numpy(x2_np.astype(np.float32))
-    print(x1.dtype)
-    
-    adj1 = neighbor_graph(x1_np, k=5)
-    adj2 = neighbor_graph(x2_np, k=5)
-    
-    # correspond matrix (correlation + 5nn graph)
-    w = np.block([[np.corrcoef(x1, x2)[0:x1.shape[0],x1.shape[0]:(x1.shape[0]+x2.shape[0])],adj1],
-                  [adj2,np.corrcoef(x1, x2)[0:x1.shape[0],x1.shape[0]:(x1.shape[0]+x2.shape[0])].T]])
-
-    L_np = laplacian(w, normed=False)
-    L = torch.from_numpy(L_np.astype(np.float32))
-    
-    optimizer = torch.optim.SGD(model.parameters(), lr = 0.01)
-    
-    for t in range(500):
-        # Forward pass: Compute predicted y by passing x to the model
-        y1_pred = model(x1)
-        y2_pred = model(x2)
-
-        outputs = torch.cat((y1_pred, y2_pred), 0)
-        
-        # Project the output onto Stiefel Manifold
-        u, s, v = torch.svd(outputs, some=True)
-        #u, s, v = torch.svd(outputs+1e-4*outputs.mean()*torch.rand(outputs.shape[0],outputs.shape[1]), some=True)
-        proj_outputs = u@v.t()
-
-        # Compute and print loss
-        print(L.dtype)
-        loss = torch.trace(proj_outputs.t()@L@proj_outputs)
-        print(t, loss.item())
-
-        # Zero gradients, perform a backward pass, and update the weights.
-        proj_outputs.retain_grad()
-
-        optimizer.zero_grad()
-        loss.backward(retain_graph=True)
-
-        # Project the (Euclidean) gradient onto the tangent space of Stiefel Manifold (to get Rimannian gradient)
-        rgrad = proj_stiefel(proj_outputs, proj_outputs.grad) 
-
-        optimizer.zero_grad()
-        # Backpropogate the Rimannian gradient w.r.t proj_outputs
-        proj_outputs.backward(rgrad)
-
-        optimizer.step()
-        
-    proj_outputs_np = proj_outputs.detach().numpy()
-    return proj_outputs_np
-    
-projections = train_and_project(x1_np, x2_np) # x1_np and x2_np are numpy arrays of two input modals
+projections = train_and_project(x1_np, x2_np, model=model, optim=optimizer, T=50) # x1_np and x2_np are numpy arrays of two input modals
 ```
 
 ### Phase 2: Classification using Network of Feature Regularization
 
-The classification is then trained with function `train_epoch`:
+define your classification model:
 
 ```python
-def train_epoch(model, X_train, y_train, opt, criterion, sim, batch_size=200):
-    model.train()
-    sim = sim
-    losses = []
-    for beg_i in range(0, X_train.size(0), batch_size):
-        x_batch = X_train[beg_i:beg_i + batch_size, :]
-        y_batch = y_train[beg_i:beg_i + batch_size]
-        x_batch = Variable(x_batch)
-        y_batch = Variable(y_batch)
+class Net(nn.Module):
+    
+    def __init__(self):
+        super().__init__()
+        self.fc1 = nn.Linear(feature_dim, 100)
+        self.relu1 = nn.ReLU()
+        self.dout = nn.Dropout(0.2)
+        self.fc2 = nn.Linear(100, 50)
+        self.prelu = nn.PReLU(1)
+        self.out = nn.Linear(50,10)
+        self.out_act = nn.Sigmoid()
+        
+    def forward(self, input_):
+        a1 = self.fc1(input_)
+        h1 = self.relu1(a1)
+        dout = self.dout(h1)
+        a2 = self.fc2(dout)
+        h2 = self.prelu(a2)
+        a3 = self.out(h2)
+        y = self.out_act(a3)
+        return y
+``` 
 
-        opt.zero_grad()
-        # (1) Forward
-        y_hat = model(x_batch.float())
-        # (2) Compute diff
-        loss = criterion(y_hat, y_batch)
-        #print(loss)
-        reg = torch.tensor(0., requires_grad=True)
-        for name, param in net.fc1.named_parameters():
-            if 'weight' in name:
-                M = .5 * ((torch.eye(feature_dim) - sim).T @ (torch.eye(feature_dim) - sim)) + .5 * torch.eye(feature_dim)
-                reg = torch.norm(reg + param @ M.float() @ param.T, 2)
-                loss += reg
-        # (3) Compute gradients
-        loss.backward()
-        # (4) update weights
-        opt.step()        
-        losses.append(loss.data.numpy())
-    return losses
+The regularized model is then trained with function `train_epoch`:
+
+```python
+from sklearn.model_selection import train_test_split
+
+X_train, X_vali, y_train, y_vali = train_test_split(X,y,test_size=0.1,
+                                                        random_state=10, stratify = y)    
+X_train = torch.tensor(X_train)
+y_train = torch.tensor(y_train)
+     
+net = Net()
+opt = torch.optim.Adam(net.parameters(), lr=0.001, betas=(0.9, 0.999))
+criterion = nn.CrossEntropyLoss()
+e_losses = []
+num_epochs = 20
+for e in range(num_epochs):
+    e_losses += train_epoch(net, X_train, y_train, opt, criterion, sim)
+with torch.no_grad():
+    x_tensor_test = torch.from_numpy(X_vali).float()#.to(device)
+    net.eval()
+    yhat = net(x_tensor_test)
+y_pred_softmax = torch.log_softmax(yhat, dim = 1)
+_, y_pred_tags = torch.max(y_pred_softmax, dim = 1)    
+correct_pred = np.mean([float(y_pred_tags[i] == y_vali[i]) for i in range(len(y_vali))])
+print("Round",i,"Test Accuracy (regularized):",correct_pred)
+acc_reg.append(np.mean(correct_pred))  
 ```
 
 ## License
