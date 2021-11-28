@@ -6,7 +6,8 @@ output: html_document
 
 ```{r}
 library(igraph)
-feature_latent = read.csv('../data/feature_projections_visual.csv',row.names = 1)
+library(plyr)
+feature_latent = read.csv('../data/deepmanreg_latent.csv',row.names = 1)
 gene_latent = feature_latent[1:1000,]
 efeature_latent = feature_latent[1001:1041,]
 #cov_mat = cor(t(gene_latent),t(efeature_latent))
@@ -26,22 +27,59 @@ for (i in 1:dim(cov_mat)[2]){
     }
   }
 } 
+names = intersect(rownames(efeature_latent),cov_net[,1])
+index = 1:32
+cov_net[,1] = mapvalues(cov_net[,1],names,index)
 ```
 
 
 ```{r}
-#pdf(paste0("../figure/network.eps"),width = 12,height = 12)
-pdf(paste0("../figure/network.pdf"),width = 12,height = 12)
+#pdf(paste0("../figure/network.eps"),width = 15,height = 15)
+pdf(paste0("../figure/network.pdf"),width = 15,height = 15)
 net=graph.edgelist(cov_net,directed=T)
 V(net)$color='yellow'
 V(net)$color[V(net)$name%in%cov_net[,2]]='cyan'
 layouts=grep("^layout_", ls("package:igraph"), value=TRUE)[-1]
 net_layout=layout_with_fr(net)
-plot.igraph(net,layout=net_layout,edge.color='black',vertex.frame.color="grey",
+plot.igraph(net,layout=net_layout,edge.color='grey',vertex.frame.color="grey",
             vertex.shape='circle',#vertex.label=NA,
-            vertex.label.cex=1,vertex.size=7,vertex.label.degree=pi/2,label.color='black',
-            edge.width=0.25,edge.arrow.size=0.25, edge.arrow.width=0.25)
+            vertex.label.cex=1.5,vertex.size=7,vertex.label.degree=pi,label.color='black',
+            edge.width=0.25,edge.arrow.size=0.25, edge.arrow.width=0.25,mark.shape = 2)
 legend('topleft',c('Electrophysiological feature','Gene'),fill=c('yellow','cyan'),bty='n')
 dev.off()
 ```
+
+```{r}
+maplist = data.frame(names,index)
+write.csv(maplist,'../data/igraph_mapping.csv',row.names = F)
+```
+
+
+```{r}
+edata = read.csv('../data/efeature_filtered.csv',row.names = 1)
+gdata = read.csv('../data/expMat_filtered.csv',row.names = 1)
+cor1 <- corr.test(edata,t(gdata),method="spearman",adjust="none")$r
+
+cor_list1 = c()
+for (i in 1:nrow(cov_net)){
+  cor_list1 = c(cor_list1,cor1[cov_net[i,1],cov_net[i,2]])
+  cor1[cov_net[i,1],cov_net[i,2]] = 0
+}
+cor_list2 = cor1[cor1 != 0]
+
+cor_mat = data.frame(div = rep(c("connect","unconnect"),c(129,40871)),corr = c(abs(cor_list1),abs(cor_list2)))
+
+pdf(paste0("../figure/igraph_boxplot.pdf"),width = 10,height = 6)
+e <- ggplot(cor_mat, aes(x = div, y = corr)) + 
+  geom_boxplot(position = position_dodge(0.8)) +
+  theme_bw() +
+  theme(axis.text=element_text(size=13),
+        axis.title = element_text(size=14)) +
+  ylim(0,1)
+e
+dev.off()
+ks.test(abs(cor_list1),abs(cor_list2))
+```
+
+
 

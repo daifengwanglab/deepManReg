@@ -1,0 +1,131 @@
+---
+title: "Network Plot Example"
+author: "Jiawei Huang"
+output: html_document
+---
+
+```{r}
+edata = read.csv('../data/efeature_filtered.csv',row.names = 1)
+gdata = read.csv('../data/expMat_filtered.csv',row.names = 1)
+label = read.csv('../data/label_visual.csv',row.names = 1)
+rn = colnames(edata)
+#X = data.frame(apply(edata,1,scale))
+X = t(edata)
+rownames(X) = rn
+#g-feature
+Y = log(gdata+1)
+gene_list = c("Dusp1","Adcy8","Tnip2","Rpusd1","Sytl2","Dpp7","Slc8a1","Gdap2","Lrrtm1","Dnaja4","Syn3","Tprgl","St3gal6","Acss2","Ilk",
+              "Gdap2","Zfp869","4-Sep","Gna13","Ptgs1","Dynlt3","Cpne4","Sgk1")
+a = cor(t(X),t(Y[gene_list,]))
+which(a == max(a),arr.ind = TRUE)
+```
+
+```{r}
+library(ggplot2)
+library(gridExtra)
+library(ggpubr)
+for (i in gene_list){
+  for (j in rownames(X)){
+    y = unlist(Y[i,])
+    a = data.frame(Y = y,X = unlist(X[j,]))
+    p1 = ggplot(a,aes(x=X,y=Y)) + geom_point(col = "#0C2D48",alpha = 0.6,size = 2) + 
+  theme_minimal() + stat_cor(method="pearson") + ggtitle("cluster1 visual")
+  ggsave(file=paste0("../figure_nonlinear_relationship/",i,j,".png"), p1,width = 20,height = 10, units = "cm")
+  }
+}
+```
+
+3.6
+
+```{r}
+library(ggplot2)
+library(gridExtra)
+library(ggpubr)
+plot_list <- list()
+#gene_list = c("4-Sep","4-Sep","4-Sep","4-Sep","Slc8a1","Slc8a1","Slc8a1","Slc8a1")
+#e_list = c("upstroke_downstroke_ratio_ramp","fast_trough_t_ramp","peak_v_short_square","peak_v_long_square",
+#           "adaptation","f_i_curve_slope","threshold_t_long_square","fast_trough_t_ramp")
+gene_list = c("4-Sep","4-Sep","Slc8a1")
+gene_list1 = c("Sept4","Sept4","Slc8a1")
+e_list = c("upstroke_downstroke_ratio_ramp","fast_trough_t_ramp","fast_trough_t_ramp")
+for (i in 1:3){
+  a = data.frame(y = unlist(Y[gene_list[i],]),x = unlist(X[e_list[i],]))
+  sp <- ggscatter(a, x = "x", y = "y",color = "darkgray") + xlab(e_list[i]) + ylab(gene_list1[i]) + 
+  geom_smooth(method = "gam", se = FALSE)
+  sp = sp + #stat_density_2d(aes(fill = ..level..),show.legend = FALSE, geom = "polygon") +
+  gradient_fill(c("white", "steelblue")) 
+  plot_list[[i]] = sp
+}
+g <- arrangeGrob(grobs=plot_list,ncol=3)
+ggsave(file="../figure/3.6.pdf", g, width = 12, height = 4, dpi = 300, units = "in")
+```
+
+```{r}
+# spearman correlation
+cor.test(unlist(Y["4-Sep",]),unlist(X["fast_trough_t_ramp",]),method = "spearman")
+
+```
+
+
+1.1
+
+```{r}
+layer = c("1","2/3","4","5","6")
+plot_list <- list()
+for (i in 1:5){
+  a = data.frame(y = unlist(Y["Kcnip4",label$layer == layer[i]]),x = unlist(X["threshold_i_ramp",label$layer == layer[i]]))
+  sp <- ggscatter(a, x = "x", y = "y",color = "lightgray") + xlab("threshold_i_ramp") + ylab("Kcnip4") +ggtitle(paste0("L",layer[i]))
+  sp = sp + stat_density_2d(aes(fill = ..level..),show.legend = FALSE, geom = "polygon") + gradient_fill(c("white", "steelblue")) 
+  plot_list[[i]] = sp
+}
+g <- arrangeGrob(grobs=plot_list,ncol=3)
+#ggsave(file="../figure/1.1.pdf", g, width = 12, height = 8, dpi = 300, units = "in")
+```
+
+```{r}
+library(psych)
+layer = c("1","2/3","4","5","6")
+ig = read.csv("../data/Integrated_Gradient.csv",row.names = 1)
+ig_gene = ig[1:1000,]
+ig_efeature = ig[1001:1041,]
+
+layer_gene = apply(abs(ig_gene),1,which.max)
+layer_efeature = apply(abs(ig_efeature),1,which.max)
+
+#pdf(file="../figure/layer_box.pdf",width = 4,height = 20)
+#par(mfrow=c(5,1))
+cormat_all = data.frame()
+for (i in 1:5){
+  gene_i = names(layer_gene[layer_gene == i])
+  efeatures_i = names(layer_efeature[layer_efeature == i])
+  corr <- cor.test(x=cars$speed, y=cars$dist, method = 'spearman')
+  sele_edata = edata[,efeatures_i]
+  sele_gdata = t(gdata[gene_i,])
+  cor1 <- corr.test(sele_edata[label$layer==layer[i],],sele_gdata[label$layer==layer[i],],method="spearman",adjust="none")$r
+  cor2 <- corr.test(sele_edata[label$layer!=layer[i],],sele_gdata[label$layer!=layer[i],],method="spearman",adjust="none")$r
+  print(t.test(abs(cor1),abs(cor2)))
+  #print(ks.test(abs(cor1),abs(cor2)))
+  cormat = data.frame(layer = rep(layer[i],length(as.vector(cor1))*2),
+                      div = rep(c("the layer","other layers"),c(length(as.vector(cor1)),length(as.vector(cor1)))),
+                      corr = c(as.vector(cor1),as.vector(cor2)))
+  cormat_all = rbind(cormat_all,cormat)
+  #boxplot(abs(cormat),main = layer[i])
+}
+
+pdf(paste0("../figure/layer_boxplot.pdf"),width = 10,height = 6)
+cormat_all$div = factor(cormat_all$div,levels = c("the layer","other layers"))
+cormat_all$corr = abs(cormat_all$corr)
+e <- ggplot(cormat_all, aes(x = layer, y = corr)) + 
+  geom_boxplot(aes(fill = div),position = position_dodge(0.8)) +
+  scale_fill_manual(values = c('#1f77b4', '#ff7f0e')) +
+  theme_bw() +
+  theme(axis.text=element_text(size=13),
+        axis.title = element_text(size=14)) +
+  ylim(0,1)
+e
+dev.off()
+```
+
+
+
+
